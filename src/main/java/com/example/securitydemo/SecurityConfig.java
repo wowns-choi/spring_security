@@ -95,8 +95,14 @@ public class SecurityConfig {
          * ================================================
          */
 
-        http.addFilterBefore(authenticationJwtTokenFilter(), // <- AuthTokenFilter 빈이 주입됨.
-                UsernamePasswordAuthenticationFilter.class);
+        // addFilterBefore(A, B) : A 실행한 후에 B 실행해라.
+        http.addFilterBefore(
+                // AuthTokenFilter 빈이 주입됨.
+                authenticationJwtTokenFilter(),
+                // AuthTokenFilter 는 SecurityContextHolder 에 신분증을 꽂아두죠?  UsernamePasswordAuthenticationFilter 는 SecurityContextHolder 에 신분증 꽂혀있으면 바로 다음 필터로 넘어갑니다.
+                // 참고로, UsernamePasswordAuthenticationFilter 는 Spring Security가 기본적으로 제공하는 필터로, 아이디와 비밀번호를 이용한 폼 로그인을 처리합니다.
+                UsernamePasswordAuthenticationFilter.class
+        );
 
         return http.build();
     }

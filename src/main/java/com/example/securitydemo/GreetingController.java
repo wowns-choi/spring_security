@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 public class GreetingController {
 
     private final AuthenticationManager authenticationManager;
-    private JwtUtils jwtUtils;
+    private final JwtUtils jwtUtils;
 
     @GetMapping("/hello")
     public String sayHello() {
@@ -58,7 +58,7 @@ public class GreetingController {
 
             // 신분증을 만들고, 유효한지 검사합니다.
             // 유효한지 검사는 어떻게 할까요? DB 에서 username 이랑 password 조회해서 일치하는지 검사합니다.
-            // 유효한 경우,
+            // 유효한 경우, UserDetails 를 담고 있는 Authentication 타입 객체를 반환.
             authentication = authenticationManager
                     .authenticate(
                             /**
