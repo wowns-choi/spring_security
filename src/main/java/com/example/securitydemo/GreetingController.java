@@ -11,6 +11,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,22 +53,42 @@ public class GreetingController {
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
         Authentication authentication;
+
         try {
+
+            // 신분증을 만들고, 유효한지 검사합니다.
+            // 유효한지 검사는 어떻게 할까요? DB 에서 username 이랑 password 조회해서 일치하는지 검사합니다.
+            // 유효한 경우,
             authentication = authenticationManager
-                    .authenticate(new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
-        } catch (AuthenticationException exception) {
+                    .authenticate(
+                            /**
+                             * UsernamePasswordAuthenticationToken <- 어디서 많이 보지 않았어요?
+                             * AuthTokenFilter 에서 봤던 신분증 만들 때 쓰인 클래스죠?
+                             * 즉, 아래 코드는 신분증을 만드는 겁니다. 이 신분증은 AuthenticationManager 로부터 인증을 받아야만 유효한 거예요.
+                             */
+                            new UsernamePasswordAuthenticationToken(
+                                    loginRequest.getUsername(),
+                                    loginRequest.getPassword()
+                            )
+                    );
+
+        } catch (AuthenticationException exception) { // 유효하지 않은 경우
             Map<String, Object> map = new HashMap<>();
             map.put("message", "Bad credentials");
             map.put("status", false);
-            return new ResponseEntity<Object>(map, HttpStatus.NOT_FOUND);
+            return new ResponseEntity<Object>(map, HttpStatus.NOT_FOUND); // 404
         }
 
+        // 유효한 경우, 현재 이 요청을 처리하는 쓰레드에 "신분증" 을 꽂아두는 행위
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
+        // 신분증에서 UserDetails(사용자 세부정보) 추출
         UserDetails userDetails   = (UserDetails) authentication.getPrincipal();
 
+        // JWT 토큰 생성하기
         String jwtToken = jwtUtils.generateTokenFromUsername(userDetails);
 
+        // 권한 모으기
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());

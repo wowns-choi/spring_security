@@ -31,6 +31,11 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtils jwtUtils;
 
+    /**
+     * 이거 어디서 만들었죠? SecurityConfig 에서 저희가 직접 만들어준 빈입니다.
+     * 구현체로 JdbcUserDetailsManager 를 썻었죠?
+     * 여기서는 username 을 받아 사용자 정보를 조회해서 UserDetails 타입 객체를 만드는데 사용하고 있습니다.
+     */
     @Autowired
     private UserDetailsService userDetailsService;
 
@@ -44,14 +49,20 @@ public class AuthTokenFilter extends OncePerRequestFilter {
         logger.debug("AuthTokenFilter called for URI: {}", request.getRequestURI());
 
         try {
+            // HTTP 요청 메세지에서 JWT 토큰 가져오기
             String jwt = parseJwt(request);
 
-            if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            if (jwt != null && jwtUtils.validateJwtToken(jwt)) { /// 유효하다면 ~
+
                 // 이름 추출
                 String username = jwtUtils.getUserNameFromJwtToken(jwt);
 
+                // username 으로 사용자 정보 조회해서 UserDetails 타입 객체 만듦.
+                // loadUserByUsername() 메서드는 JdbcUserDetailsManager 안에 있는 걸 보면 되겠죠?
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
+                // 여기까지 왔다면, JWT 토큰이 유효하면서 && 실제로 DB 에 존재하는 사용자겠죠?
+                // 이 사용자에 대한 "인증토큰(신분증)" 을 만듭니다. 앞으로 신분증이라고 표현하겠습니다.
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
@@ -59,9 +70,12 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 );
 
                 logger.debug("Roles from JWT: {}", userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource());
+                authentication.setDetails(new WebAuthenticationDetailsSource()); // 신분증 뒷면에 사용자의 IP 주소등을 써넣는 역할을 합니다.
+
+                // 현재 이 요청을 처리하는 쓰레드에 "신분증" 을 꽂아두는 행위
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
+
         } catch (Exception e) {
             logger.error("Cannot set user authentication: {}", e);
         }
