@@ -83,7 +83,7 @@ public class GreetingController {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         // 신분증에서 UserDetails(사용자 세부정보) 추출
-        UserDetails userDetails   = (UserDetails) authentication.getPrincipal();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
 
         // JWT 토큰 생성하기
         String jwtToken = jwtUtils.generateTokenFromUsername(userDetails);
@@ -96,4 +96,34 @@ public class GreetingController {
         LoginResponse response = new LoginResponse(userDetails.getUsername(), roles, jwtToken);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 전통적인 방식
+     * - 직접 SecurityContextHolder 에 저장해둔 신분증 이용하기
+     * @return
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<?> getUserProfile() {
+        // SecurityContextHolder 에 저장해둔 "인증토큰(신분증)" 을 가져옵니다.
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        // 신분증에서 UserDetails(사용자 세부정보) 추출
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+
+        Map<String, Object> profile = new HashMap<>();
+        profile.put("username", userDetails.getUsername());
+        profile.put("roles", userDetails.getAuthorities()
+                .stream()
+                .map(item -> item.getAuthority()).collect(Collectors.toList())
+        );
+        profile.put("message", "This is user-specific content form backend");
+        return ResponseEntity.ok(profile);
+    }
+
+    /**
+     * 요즘 방식
+     * - 내부적으로는 위와 같이 SecurityContextHolder 에 저장해둔 인증토큰(신분증) 을 이용합니다.
+     * - 다만, 이를 Spring MVC 의 Argument Resolver 가 대신해줍니다.
+     */
+
 }

@@ -23,8 +23,13 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.provisioning.JdbcUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import javax.sql.DataSource;
+
+import java.util.List;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
@@ -64,6 +69,7 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         // /signin 로 시작하는 것들은 인증을 요구하지 않도록 함.
                         .requestMatchers("/signin").permitAll()
+                        .requestMatchers("/api/public/**").permitAll()
                         // 나머지는 모두 인증 요구
                         .anyRequest().authenticated());
 
@@ -160,6 +166,39 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration builder)
             throws Exception {
         return builder.getAuthenticationManager();
+    }
+
+    /**
+     * CORS 설정
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // ★ 핵심: allowCredentials(true) 일 때는 allowedOrigins에 "*" 못 씀 (브라우저가 거부)
+        // 그래서 구체적인 오리진만 넣어야 함
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:3000"
+                // 배포 시 추가 예시:
+                // "https://your-frontend-domain.com",
+                // "https://www.your-frontend-domain.com"
+        ));
+
+        // 또는 패턴으로 (와일드카드 허용하려면)
+        // configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "https://*.your-domain.com"));
+
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);           // 쿠키, Authorization 헤더 등 credential 허용
+        configuration.setMaxAge(3600L);                    // preflight 캐시 1시간
+
+        // 필요 시 노출할 헤더 (JWT 토큰 등 커스텀 헤더)
+        // configuration.setExposedHeaders(List.of("Authorization", "Refresh-Token"));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);  // 모든 경로에 적용
+
+        return source;
     }
 
 }
