@@ -13,7 +13,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
-import org.springframework.web.filter.GenericFilterBean;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -26,7 +25,7 @@ import java.io.IOException;
  * - 비동기 요청인 경우, 스레드 1 이 필터를 통과한 후, 비동기 작업을 마치고 나서 서블릿컨테이너로 돌아와서 스레드 2를 할당받으면 스레드2가 다시 필터를 통과할 수 있음.
  */
 @Component
-public class AuthTokenFilter extends OncePerRequestFilter {
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtils jwtUtils;
@@ -39,7 +38,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     @Autowired
     private UserDetailsService userDetailsService;
 
-    private static final Logger logger = LoggerFactory.getLogger(AuthTokenFilter.class);
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
 
     @Override
@@ -57,14 +56,24 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 // 이름 추출
                 String username = jwtUtils.getUserNameFromJwtToken(jwt);
 
-                // username 으로 사용자 정보 조회해서 UserDetails 타입 객체 만듦.
-                // loadUserByUsername() 메서드는 JdbcUserDetailsManager 안에 있는 걸 보면 되겠죠?
+                /**
+                 * 여기!! ==
+                 * UserDetailService 의 역할인 DB 에서 사용자 정보 조회를 하고 있는 모습입니다.
+                 * 스프링 시큐리티를 쓸 때, 테이블의 구조는 정해져 있을까요?
+                 * 지금까지 우리는 https://github.com/spring-projects/spring-security 에서 테이블 구조를 얻어와서 schema.sql 에 뒀었죠?
+                 * user 라는 이름 말고, Member 라는 이름으로 하면 안될까요?
+                 *
+                 * 됩니다. 그러기 위해서는 DB에서 사용자 정보를 조회해오는 UserDetailService 를 커스터마이징 할 필요가 있습니다.
+                 * CustomUserDetailsService 이라고 만들어뒀으니, 참고해주세요.
+                 *
+                 */
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+//                Member member = (Member) userDetailsService.loadUserByUsername(username);
 
                 // 여기까지 왔다면, JWT 토큰이 유효하면서 && 실제로 DB 에 존재하는 사용자겠죠?
                 // 이 사용자에 대한 "인증토큰(신분증)" 을 만듭니다. 앞으로 신분증이라고 표현하겠습니다.
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userDetails,
+                        userDetails, // <- 이게 principal 입니다. 개중요!
                         null,
                         userDetails.getAuthorities()
                 );

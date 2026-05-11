@@ -1,14 +1,12 @@
 package com.example.securitydemo;
 
 import com.example.securitydemo.jwt.AuthEntryPointJwt;
-import com.example.securitydemo.jwt.AuthTokenFilter;
-import io.jsonwebtoken.security.Password;
+import com.example.securitydemo.jwt.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -19,7 +17,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.provisioning.JdbcUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -30,8 +27,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import javax.sql.DataSource;
 
 import java.util.List;
-
-import static org.springframework.security.config.Customizer.withDefaults;
 
 /**
  * 사용자 지정 보안 설정하기
@@ -44,7 +39,11 @@ import static org.springframework.security.config.Customizer.withDefaults;
 // 즉, @EnableWebSecurity 는 커스텀한 보안 설정객체를 만든 다음에 켜는 스위치 라고 비유할 수 있습니다.
 @EnableWebSecurity
 // @PreAuthorize 가 동작하려면, @EnableMethodSecurity 가 필요함.
-@EnableMethodSecurity
+@EnableMethodSecurity(
+        prePostEnabled = true,   // @PreAuthorize, @PostAuthorize, @PreFilter, @PostFilter 활성화 (기본 true)
+        securedEnabled = true,   // @Secured 애너테이션 지원 (레거시용, 필요 시)
+        jsr250Enabled = true     // @RolesAllowed, @PermitAll 등 JSR-250 표준 지원
+)
 public class SecurityConfig {
 
     @Autowired
@@ -54,8 +53,8 @@ public class SecurityConfig {
     private AuthEntryPointJwt unauthorizedHandler;
 
     @Bean
-    public AuthTokenFilter authenticationJwtTokenFilter() {
-        return new AuthTokenFilter();
+    public JwtAuthenticationFilter authenticationJwtTokenFilter() {
+        return new JwtAuthenticationFilter();
     }
 
 
@@ -67,11 +66,28 @@ public class SecurityConfig {
                 authorizeRequests
                         // /h2-console/ 로 시작하는 것들은 인증을 요구하지 않도록 함.
                         .requestMatchers("/h2-console/**").permitAll()
-                        // /signin 로 시작하는 것들은 인증을 요구하지 않도록 함.
+
+                        // /signin 로 시작하는 것들은 인증과 인가를 요구하지 않도록 함.
                         .requestMatchers("/signin").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+
+//                        // /admin 엔드포인트는 접근하지 못하도록 함. 접근하면 403(인가X) 응답.
+//                        // 언제 쓰일까요?
+//                        // - 비상상황 : 예시) 결제 관련 심각한 오류 발생시
+//                        // - 더 이상 사용되지 않는 엔드포인트
+//                        .requestMatchers("/admin/**").denyAll()
+
+                        /**
+                         * == 인가 ==
+                         * 스프링 시큐리티를 사용할 때, 인가는 2가지 방법으로 할 수 있습니다.
+                         * - URL 기반 인가 ( 바로 아래 있는 requestMatchers 를 이용하는 방식 )
+                         * - 메서드 레벨 인가 ( @PreAuthorize 등. GreetingController 에 설명해둠 )
+                         */
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                         // 나머지는 모두 인증 요구
-                        .anyRequest().authenticated());
+                        .anyRequest().authenticated()
+        );
 
         // 세션 안쓰기
         http.sessionManagement(
@@ -97,7 +113,32 @@ public class SecurityConfig {
         /**
          * ================================================
          * 폼 로그인(http.formLogin(withDefaults());) 도 아니고,
-         * 기본인증(http.httpBasic(withDefaults());) 도 아님.
+         * 기본인증(http.httpBasic(withDefaults());) 도 아니고,
+         * OAuth2 인증(http.oauth2Login();) 도 아님.
+         *
+         * 1. 기본인증(http.httpBasic(withDefaults());) 했을 때, 스프링 시큐리티 필터 체인은 다음과 같이 구성됩니다.
+         * - DisableEncodeUrlFilter, WebAsyncManagerIntegrationFilter, SecurityContextHolderFilter, HeaderWriterFilter, LogoutFilter,
+         *   BasicAuthenticationFilter,
+         *   RequestCacheAwareFilter, SecurityContextHolderAwareRequestFilter, AnonymousAuthenticationFilter, ExceptionTranslationFilter, AuthorizationFilter
+         *
+         * 2. 폼 로그인(http.formLogin(withDefaults());) 를 했을 때, 스프링 시큐리티 필터 체인은 다음과 같이 구성됩니다.
+         * - DisableEncodeUrlFilter, WebAsyncManagerIntegrationFilter, SecurityContextHolderFilter, HeaderWriterFilter, LogoutFilter,
+         *   UsernamePasswordAuthenticationFilter,
+         *   DefaultResourcesFilter, DefaultLoginPageGeneratingFilter, DefaultLogoutPageGeneratingFilter,
+         *   RequestCacheAwareFilter, SecurityContextHolderAwareRequestFilter, AnonymousAuthenticationFilter, ExceptionTranslationFilter, AuthorizationFilter
+         *
+         * 3. OAuth2 인증(http.oauth2Login();) 했을 때, 스프링 시큐리티 필터 체인은 다음과 같이 구성됩니다.
+         * - DisableEncodeUrlFilter, WebAsyncManagerIntegrationFilter, SecurityContextHolderFilter, HeaderWriterFilter, LogoutFilter,
+         *   OAuth2AuthorizationRequestRedirectFilter, OAuth2LoginAuthenticationFilter,
+         *   DefaultResourcesFilter, DefaultLoginPageGeneratingFilter, DefaultLogoutPageGeneratingFilter,
+         *   RequestCacheAwareFilter, SecurityContextHolderAwareRequestFilter, AnonymousAuthenticationFilter, ExceptionTranslationFilter, AuthorizationFilter
+         *
+         * 세 방식 모두 첫째줄과 마지막줄의 필터들이 공통되네요.
+         * 기본인증과 OAuth2 인증은 세번째줄이 공통됩니다.
+         *
+         *
+         *
+         *
          * ================================================
          */
 
@@ -118,11 +159,15 @@ public class SecurityConfig {
         // UserDetailsService : 인터페이스(1)
         // UserDetailsManager : 인터페이스(2)
         // JdbcUserDetailsManager : 클래스(3)
-
         // 2는 1을 상속하고, 3은 2를 구현하고 있습니다.
-        // UserDetailsService(1) 의 역할은 2개로 나눌 수 있음.
-        // - 사용자 이름을 받아서 데이터베이스 등에서 사용자 정보를 조회해서 그 정보로 UserDetails 타입 객체를 만들어서 반환함.
-        // - UserDetails 타입 객체를 받아 DB 저장
+
+        // UserDetailsService(1) 의 역할은 뭘까요?
+        // DB(또는 H2인 경우 메모리) 에서 사용자 정보 조회하는 것입니다.
+
+        /**
+         * 이렇게 등록한 UserDetailService 타입 객체는 어디에서 쓰이고 있을까요?
+         * AuthTokenFilter 의 "여기!!" 로 가주세요.
+         */
         JdbcUserDetailsManager userDetailsManager = new JdbcUserDetailsManager(dataSource); // 스프링 부트는 application.properties 에 써둔 데이터베이스 접근 정보와 도입한 라이브러리를 보고 알아서 DataSource 타입 빈을 만들어서 스프링 컨테이너에 둡니다.
         return userDetailsManager;
 
@@ -165,6 +210,7 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration builder)
             throws Exception {
+
         return builder.getAuthenticationManager();
     }
 
